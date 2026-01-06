@@ -2,33 +2,50 @@ import tensorflow as tf
 from tensorflow.keras import layers
 from transformers import TFAutoModel, TFCLIPVisionModel
 
+
 class VisualEncoder(layers.Layer):
-    def __init__(self, model_name="microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224", embed_dim=768, **kwargs):
+    def __init__(
+        self,
+        model_name="microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224",
+        embed_dim=768,
+        **kwargs
+    ):
         super(VisualEncoder, self).__init__(**kwargs)
-        self.embed_dim = embed_dim        
-        self.backbone = TFCLIPVisionModel.from_pretrained(model_name, from_pt=True)
-                
+        self.embed_dim = embed_dim
+        self.backbone = TFCLIPVisionModel.from_pretrained(
+            model_name, from_pt=True
+        )
         self.projection = layers.Dense(embed_dim)
 
-    def call(self, images):        
+    def call(self, images):
         images = tf.transpose(images, perm=[0, 3, 1, 2])
-                
         outputs = self.backbone(pixel_values=images)
-            
         features = outputs.pooler_output
         return self.projection(features)
 
+
 class TextualEncoder(layers.Layer):
-    def __init__(self, model_name="microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract-fulltext", embed_dim=768, **kwargs):
+    def __init__(
+        self,
+        model_name="microsoft/BiomedVLP-CXR-BERT-general",
+        embed_dim=768,
+        **kwargs
+    ):
         super(TextualEncoder, self).__init__(**kwargs)
         self.embed_dim = embed_dim
-        self.bert = TFAutoModel.from_pretrained(model_name, from_pt=True)
+        self.bert = TFAutoModel.from_pretrained(
+            model_name, from_pt=True
+        )
         self.projection = layers.Dense(embed_dim)
 
     def call(self, input_ids, attention_mask):
-        outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
+        outputs = self.bert(
+            input_ids=input_ids,
+            attention_mask=attention_mask
+        )
         cls_token = outputs.last_hidden_state[:, 0, :]
         return self.projection(cls_token)
+
 
 class PriorGuidedAttention(layers.Layer):
     def __init__(self, embed_dim, **kwargs):
@@ -46,6 +63,7 @@ class PriorGuidedAttention(layers.Layer):
         context = tf.squeeze(context, axis=1)
         return v_current + context
 
+
 class DiseaseClassifier(layers.Layer):
     def __init__(self, num_classes=13, embed_dim=768, **kwargs):
         super(DiseaseClassifier, self).__init__(**kwargs)
@@ -60,7 +78,8 @@ class DiseaseClassifier(layers.Layer):
         )
 
     def call(self, visual_features):
-        logits = tf.matmul(visual_features, self.phi, transpose_b=True) / self.scale
+        logits = tf.matmul(
+            visual_features, self.phi, transpose_b=True
+        ) / self.scale
         probs = tf.nn.softmax(logits, axis=-1)
         return probs, logits
-
