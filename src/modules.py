@@ -1,20 +1,28 @@
 import tensorflow as tf
 from tensorflow.keras import layers
-from transformers import TFAutoModel
+from transformers import TFAutoModel, TFCLIPVisionModel
 
 class VisualEncoder(layers.Layer):
-    def __init__(self, embed_dim=768, **kwargs):
+    def __init__(self, model_name="microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224", embed_dim=768, **kwargs):
         super(VisualEncoder, self).__init__(**kwargs)
         self.embed_dim = embed_dim
-        self.backbone = tf.keras.applications.ResNet50(
-            include_top=False,
-            weights='imagenet',
-            pooling='avg'
-        )
+        # Load the BioMedCLIP Vision Transformer (ViT-B/16)
+        # Note: from_pt=True requires PyTorch to be installed to convert weights
+        self.backbone = TFCLIPVisionModel.from_pretrained(model_name, from_pt=True)
+        
+        # Keep projection to map to the shared embedding space dimension
         self.projection = layers.Dense(embed_dim)
 
     def call(self, images):
-        features = self.backbone(images)
+        # Transformers expect NCHW (Batch, Channels, Height, Width)
+        # TensorFlow images are usually NHWC (Batch, Height, Width, Channels)
+        images = tf.transpose(images, perm=[0, 3, 1, 2])
+        
+        # Pass pixel_values to the ViT backbone
+        outputs = self.backbone(pixel_values=images)
+        
+        # Use pooler_output (CLS token features) as the image representation
+        features = outputs.pooler_output
         return self.projection(features)
 
 class TextualEncoder(layers.Layer):
